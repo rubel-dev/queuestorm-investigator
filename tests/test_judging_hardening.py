@@ -34,6 +34,8 @@ RESPONSE_FIELDS = {
     "reason_codes",
 }
 
+SAFETY_WARNING = "please do not share your pin, otp, password, or secret credentials"
+
 FORBIDDEN_REPLY_PHRASES = (
     "send otp",
     "share otp",
@@ -111,6 +113,7 @@ def assert_safe_text(data: dict[str, object]) -> None:
     assert "traceback" not in combined
     assert "api_key" not in combined
     assert "secret_key" not in combined
+    assert SAFETY_WARNING in customer_reply
 
 
 def test_health_exact_response_and_content_type() -> None:

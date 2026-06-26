@@ -5,6 +5,8 @@ from app.main import app
 
 client = TestClient(app)
 
+SAFETY_WARNING = "please do not share your pin, otp, password, or secret credentials"
+
 
 def test_health_returns_exact_status() -> None:
     response = client.get("/health")
@@ -102,10 +104,9 @@ def test_safety_reply_never_requests_sensitive_credentials() -> None:
     assert payload["severity"] == "critical"
     assert payload["human_review_required"] is True
     reply = payload["customer_reply"].casefold()
-    assert "share your" not in reply
     assert "send otp" not in reply
     assert "provide pin" not in reply
-    assert "do not share" in reply
+    assert SAFETY_WARNING in reply
 
 
 def test_empty_complaint_returns_controlled_422() -> None:
@@ -337,6 +338,68 @@ def test_prompt_injection_does_not_override_safety() -> None:
     assert payload["department"] == "fraud_risk"
     assert "send otp" not in combined
     assert "provide pin" not in combined
-    assert "password" not in payload["customer_reply"].casefold()
+    assert SAFETY_WARNING in payload["customer_reply"].casefold()
     assert "refund you" not in combined
     assert "will refund" not in combined
+
+
+def test_wrong_transfer_without_matching_transaction_requires_human_review() -> None:
+    response = client.post(
+        "/analyze-ticket",
+        json={
+            "ticket_id": "TKT-WRONG-NO-MATCH",
+            "complaint": "I sent 5000 taka to wrong number +8801711111111.",
+            "transaction_history": [
+                {
+                    "transaction_id": "TXN-OTHER",
+                    "timestamp": "2026-04-14T14:08:22Z",
+                    "type": "transfer",
+                    "amount": 900,
+                    "counterparty": "+8801812222222",
+                    "status": "completed",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["case_type"] == "wrong_transfer"
+    assert payload["relevant_transaction_id"] is None
+    assert payload["evidence_verdict"] == "insufficient_data"
+    assert payload["human_review_required"] is True
+
+
+def test_ambiguous_wrong_transfer_requires_human_review() -> None:
+    response = client.post(
+        "/analyze-ticket",
+        json={
+            "ticket_id": "TKT-WRONG-AMBIGUOUS",
+            "complaint": "I sent 1000 taka to the wrong person yesterday.",
+            "transaction_history": [
+                {
+                    "transaction_id": "TXN-WA",
+                    "timestamp": "2026-04-13T11:20:00Z",
+                    "type": "transfer",
+                    "amount": 1000,
+                    "counterparty": "+8801712001122",
+                    "status": "completed",
+                },
+                {
+                    "transaction_id": "TXN-WB",
+                    "timestamp": "2026-04-13T19:45:00Z",
+                    "type": "transfer",
+                    "amount": 1000,
+                    "counterparty": "+8801812334455",
+                    "status": "completed",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["case_type"] == "wrong_transfer"
+    assert payload["relevant_transaction_id"] is None
+    assert payload["evidence_verdict"] == "insufficient_data"
+    assert payload["human_review_required"] is True

@@ -855,13 +855,17 @@ def should_require_human_review(
     match: TransactionMatch,
     payload: AnalyzeTicketRequest,
 ) -> bool:
+    if case_type == CaseType.wrong_transfer:
+        return True
+    if match.ambiguous or match.conflicting:
+        return True
+    if severity in {Severity.high, Severity.critical}:
+        return True
     if case_type in {
         CaseType.phishing_or_social_engineering,
         CaseType.agent_cash_in_issue,
     }:
         return True
-    if case_type == CaseType.wrong_transfer:
-        return match.transaction is not None and not match.ambiguous
     if case_type == CaseType.duplicate_payment:
         return True
     if (
@@ -873,12 +877,8 @@ def should_require_human_review(
         return False
     if case_type == CaseType.refund_request and verdict != EvidenceVerdict.consistent:
         return True
-    if severity in {Severity.high, Severity.critical}:
-        return True
     if verdict == EvidenceVerdict.insufficient_data:
-        return case_type not in {CaseType.other, CaseType.wrong_transfer}
-    if match.ambiguous or match.conflicting:
-        return case_type not in {CaseType.wrong_transfer}
+        return case_type != CaseType.other
     if payload.user_type in {UserType.merchant, UserType.agent}:
         return verdict != EvidenceVerdict.consistent
     return False
@@ -981,12 +981,16 @@ def build_customer_reply(
     match: Transaction | None,
 ) -> str:
     txn_text = f" for transaction {match.transaction_id}" if match is not None else ""
+    safety_warning = (
+        " Please do not share your PIN, OTP, password, or secret credentials with anyone."
+    )
 
     if case_type == CaseType.phishing_or_social_engineering:
         return (
             "We have noted your security concern. Do not share confidential credentials "
             "with anyone, and continue only through official support channels while our "
             "team reviews the report."
+            f"{safety_warning}"
         )
 
     if verdict == EvidenceVerdict.inconsistent:
@@ -994,6 +998,7 @@ def build_customer_reply(
             f"We have reviewed the available transaction history{txn_text}, and it does "
             "not currently support the reported issue. Our team will recheck the details "
             "through official records."
+            f"{safety_warning}"
         )
 
     if verdict == EvidenceVerdict.insufficient_data:
@@ -1001,12 +1006,14 @@ def build_customer_reply(
             "We have noted your concern, but the provided transaction history is not enough "
             "to confirm the issue. Our team will review it through official channels and "
             "may ask for non-sensitive details such as date, amount, or recipient."
+            f"{safety_warning}"
         )
 
     return (
         f"We have noted your concern{txn_text}. The available transaction history supports "
         "that this needs follow-up. Eligible cases will be reviewed through official "
         "channels after verification."
+        f"{safety_warning}"
     )
 
 
