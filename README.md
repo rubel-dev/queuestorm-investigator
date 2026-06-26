@@ -1,10 +1,106 @@
 # QueueStorm Investigator
 
-QueueStorm Investigator is a FastAPI backend for the SUST CSE Carnival 2026 Codex Community Hackathon preliminary challenge. It receives one customer support complaint plus recent transaction history and returns a schema-valid, evidence-grounded triage decision for support agents.
+QueueStorm Investigator is a Docker-ready FastAPI backend for the SUST QueueStorm Investigator preliminary challenge. It analyzes a support complaint together with supplied transaction history and returns an official-schema JSON triage response.
 
-The service is fully offline and rule-based. It does not call external LLMs, does not load models, does not use a database, and starts quickly for automated judging.
+The service is deterministic, offline, and rule-based. It does not call external APIs, does not use an LLM, does not require a database, and does not download models during startup.
 
-## Official Endpoints
+## Architecture
+
+- FastAPI app entrypoint: `app/main.py`
+- API routes: `app/api.py`
+- Pydantic v2 request/response schemas and enums: `app/models.py`
+- Rule-based reasoning engine: `app/services/analyzer.py`
+- Tests and hidden-style judge runner: `tests/`
+- Docker fallback runtime: `Dockerfile`
+
+## Folder Structure
+
+```text
+.
+├── app/
+│   ├── api.py
+│   ├── main.py
+│   ├── models.py
+│   └── services/
+│       └── analyzer.py
+├── tests/
+│   ├── QueueStorm_300_Hidden_Style_Cases.json
+│   ├── hidden_cases.json
+│   ├── test_api.py
+│   ├── test_hidden_judge.py
+│   └── test_judging_hardening.py
+├── Dockerfile
+├── requirements.txt
+├── .env.example
+├── .dockerignore
+└── SUBMISSION.md
+```
+
+## Python Version
+
+Python 3.12+ is required. The Docker image uses the lightweight official `python:3.12-slim` base image.
+
+## Local Installation
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Linux/macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Run locally:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+## Docker Build
+
+```bash
+docker build -t queuestorm-investigator .
+```
+
+## Docker Run
+
+Create a local `.env` file from `.env.example` and set non-secret values if desired:
+
+```text
+PORT=8000
+LOG_LEVEL=info
+ENVIRONMENT=production
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env queuestorm-investigator
+```
+
+The container starts FastAPI with Uvicorn, binds to `0.0.0.0`, and exposes port `8000`.
+
+## Environment Variables
+
+`.env.example` lists variable names only and contains no secrets:
+
+```text
+PORT=
+LOG_LEVEL=
+ENVIRONMENT=
+```
+
+- `PORT`: service port, defaults to `8000`
+- `LOG_LEVEL`: Uvicorn log level, defaults to `info`
+- `ENVIRONMENT`: deployment label for operators
+
+## API Endpoints
 
 ### `GET /health`
 
@@ -16,31 +112,9 @@ Returns exactly:
 
 ### `POST /analyze-ticket`
 
-Accepts one ticket per request and returns one structured JSON analysis.
+Analyzes one ticket and returns the official response schema. No authentication is required.
 
 ## Request Schema
-
-```json
-{
-  "ticket_id": "TKT-001",
-  "complaint": "I sent 5000 taka to a wrong number around 2pm today...",
-  "language": "en",
-  "channel": "in_app_chat",
-  "user_type": "customer",
-  "campaign_context": "campaign_day_1",
-  "transaction_history": [
-    {
-      "transaction_id": "TXN-9101",
-      "timestamp": "2026-04-14T14:08:22Z",
-      "type": "transfer",
-      "amount": 5000,
-      "counterparty": "+8801719876543",
-      "status": "completed"
-    }
-  ],
-  "metadata": {}
-}
-```
 
 Required fields:
 
@@ -65,211 +139,116 @@ Transaction fields:
 - `counterparty`: string
 - `status`: `completed`, `failed`, `pending`, `reversed`
 
-## Response Schema
+Example:
 
 ```json
 {
   "ticket_id": "TKT-001",
-  "relevant_transaction_id": "TXN-9101",
-  "evidence_verdict": "consistent",
-  "case_type": "wrong_transfer",
-  "severity": "high",
-  "department": "dispute_resolution",
-  "agent_summary": "Ticket appears to be wrong transfer linked to TXN-9101...",
-  "recommended_next_action": "Route transaction TXN-9101 to dispute_resolution...",
-  "customer_reply": "We have noted your concern for transaction TXN-9101...",
-  "human_review_required": true,
-  "confidence": 0.95,
-  "reason_codes": ["case_wrong_transfer", "transaction_id_match"]
+  "complaint": "I sent 5000 taka to a wrong number around 2pm.",
+  "language": "en",
+  "channel": "in_app_chat",
+  "user_type": "customer",
+  "campaign_context": "campaign_day_1",
+  "transaction_history": [
+    {
+      "transaction_id": "TXN-9101",
+      "timestamp": "2026-04-14T14:08:22Z",
+      "type": "transfer",
+      "amount": 5000,
+      "counterparty": "+8801719876543",
+      "status": "completed"
+    }
+  ],
+  "metadata": {}
 }
 ```
 
-Response enums:
+## Response Schema
 
+Required response fields:
+
+- `ticket_id`: string
+- `relevant_transaction_id`: string or null
 - `evidence_verdict`: `consistent`, `inconsistent`, `insufficient_data`
 - `case_type`: `wrong_transfer`, `payment_failed`, `refund_request`, `duplicate_payment`, `merchant_settlement_delay`, `agent_cash_in_issue`, `phishing_or_social_engineering`, `other`
 - `severity`: `low`, `medium`, `high`, `critical`
 - `department`: `customer_support`, `dispute_resolution`, `payments_ops`, `merchant_operations`, `agent_operations`, `fraud_risk`
+- `agent_summary`: string
+- `recommended_next_action`: string
+- `customer_reply`: string
+- `human_review_required`: boolean
 
-The service does not add response fields outside the official schema. `ticket_id` is echoed exactly. `relevant_transaction_id` is always selected from the supplied `transaction_history`; if no supplied transaction clearly matches, it is `null`.
+Optional response fields:
 
-## Setup
+- `confidence`: number between `0` and `1`
+- `reason_codes`: array of strings
 
-Requirements:
+No extra response fields are emitted. `ticket_id` is echoed exactly, and `relevant_transaction_id` is selected only from supplied `transaction_history`.
 
-- Python 3.12+
-- pip
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-On Linux or macOS:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Run Locally
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Smoke test:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Example analysis request:
-
-```bash
-curl -X POST http://localhost:8000/analyze-ticket \
-  -H "Content-Type: application/json" \
-  -d '{
-    "ticket_id": "TKT-001",
-    "complaint": "I sent 5000 taka to a wrong number +8801719876543 around 2pm.",
-    "language": "en",
-    "channel": "in_app_chat",
-    "user_type": "customer",
-    "transaction_history": [
-      {
-        "transaction_id": "TXN-9101",
-        "timestamp": "2026-04-14T14:08:22Z",
-        "type": "transfer",
-        "amount": 5000,
-        "counterparty": "+8801719876543",
-        "status": "completed"
-      }
-    ]
-  }'
-```
-
-## Run Tests
+## Running Pytest
 
 ```bash
 pytest
 ```
 
-The test suite covers the official endpoints, schema, enums, all case types, evidence verdicts, safety traps, malformed input, Bangla and Banglish complaints, deterministic repeated output, confidence range, and no extra response fields.
+The suite covers endpoint exactness, schema and enum validation, all case types, evidence verdicts, Bangla/Banglish/typo-heavy complaints, malformed input, safety traps, ambiguous evidence, deterministic output, and the hidden-style judge runner.
 
-## Docker
+## Rule-Based Reasoning Engine
 
-Build:
+The analyzer combines complaint signals with transaction evidence. It never invents transaction IDs and returns `null` when no transaction confidently matches.
 
-```bash
-docker build -t queuestorm-investigator .
-```
+Evidence matching considers:
 
-Run:
+- amount clues
+- transaction type
+- transaction status
+- timestamp hints
+- counterparty hints
+- transaction ID hints
+- duplicate-payment patterns
+- merchant and agent context
 
-```bash
-docker run -p 8000:8000 --env-file .env.example queuestorm-investigator
-```
+Verdicts:
 
-The Dockerfile uses `python:3.12-slim`, installs `requirements.txt`, exposes port `8000`, and runs Uvicorn bound to `0.0.0.0`.
-
-## Environment Variables
-
-`.env.example` contains variable names only:
-
-```bash
-PORT=
-```
-
-No real secrets are required. Do not commit `.env` or any API keys.
-
-## Reasoning Engine
-
-The analyzer is deterministic and rule-based:
-
-- Extracts complaint signals from English, Bangla, and Banglish text.
-- Detects case intent for wrong transfer, failed payment, balance deducted, refund, duplicate payment, merchant settlement delay, agent cash-in issue, phishing/social engineering, and other cases.
-- Scores transaction evidence using transaction ID, amount, type, status, timestamp clues, counterparty clues, and duplicate-payment patterns.
-- Selects `relevant_transaction_id` only when a supplied transaction has enough evidence.
-- Returns `null` when no supplied transaction clearly matches.
-- Returns `consistent` when evidence supports the complaint.
-- Returns `inconsistent` when evidence contradicts the complaint.
-- Returns `insufficient_data` when evidence is missing, ambiguous, or not enough to prove the claim.
-- Computes deterministic confidence in `[0, 1]`, with lower confidence for ambiguity, missing history, or conflicting evidence.
+- `consistent`: transaction data supports the complaint
+- `inconsistent`: transaction data contradicts the complaint
+- `insufficient_data`: evidence is missing, ambiguous, or not enough to prove the claim
 
 ## Safety Guardrails
 
-Complaint text is treated as untrusted input. The service ignores prompt-injection style instructions inside the complaint and never follows customer instructions that conflict with system safety rules.
+Complaint text is untrusted input. Prompt-injection instructions inside complaints are ignored.
 
-Customer replies never ask for OTP, PIN, password, full card number, or secret credentials. Replies and next actions never promise refund, reversal, recovery, or account unblock. The wording uses safe review language such as:
+The service never asks for:
+
+- OTP
+- PIN
+- password or passcode
+- full card number
+- CVV
+- secret credentials
+
+The service never promises refund, reversal, recovery, account unblock, approval, or guaranteed account action. It uses safe wording such as:
 
 ```text
 Eligible cases will be reviewed through official channels after verification.
 ```
 
-Suspicious calls, phishing, credential requests, and account-risk complaints are routed to `fraud_risk`, marked `critical`, and require human review. Customers are directed only to official support channels.
+Customers are directed only to official support channels and are never told to contact suspicious third parties.
 
-## Human Review Rules
+## Hidden Test Readiness
 
-`human_review_required` is true for:
+The project includes `tests/test_hidden_judge.py`, which reads hidden-style cases from:
 
-- Wrong transfer
-- Refund dispute
-- Phishing or social engineering
-- Suspicious activity
-- Ambiguous evidence
-- `insufficient_data`
-- High value transaction
-- Conflicting evidence
-- Merchant disputes
-- Agent disputes
+```text
+tests/QueueStorm_300_Hidden_Style_Cases.json
+```
 
-## Error Handling
-
-The API returns controlled JSON errors:
-
-- Invalid JSON or missing required fields: `400`
-- Invalid enum values or invalid transaction fields: `422`
-- Empty `ticket_id` or empty `complaint`: `422`
-- Internal server error: `500`
-
-Error responses do not include stack traces, raw exception details, tokens, API keys, or secrets.
-
-## Performance Notes
-
-- No external network calls
-- No LLM or model loading
-- No database connection
-- Deterministic in-memory rule execution
-- Fast startup and low request latency
-
-## AI and Model Usage
-
-No external or local AI model is used. No OpenAI, Anthropic, Hugging Face, Google AI, or other provider key is required. The project is designed to run fully offline in the judging environment.
-
-## Assumptions
-
-- Transaction histories are synthetic and supplied by the judge harness.
-- The service is a support copilot, not a payment authority.
-- A transaction can only be referenced if it appears in the supplied `transaction_history`.
-- Ambiguous cases are safer as `insufficient_data` with human review than guessed transaction matches.
+It validates official fields, enums, confidence range, reason codes, safety wording, prompt-injection resistance, controlled errors, and no extra response fields.
 
 ## Known Limitations
 
-- Rule-based language coverage cannot catch every possible spelling or phrasing.
-- The service does not access real ledgers, account state, KYC data, or payment APIs.
+- Rule-based language coverage cannot capture every spelling or phrasing.
+- The service does not connect to real ledgers, payment APIs, account state, or KYC systems.
 - Refund eligibility cannot be proven from complaint text alone.
-- Very vague complaints may be classified as `other` or `insufficient_data`.
-- Timestamp reasoning uses simple hour/minute clues and does not infer local timezone beyond supplied ISO timestamps.
-
-## Deployment Notes
-
-For live deployment, expose the base URL publicly so judges can call:
-
-```text
-GET  https://your-service.example.com/health
-POST https://your-service.example.com/analyze-ticket
-```
-
-No login, private network access, manual approval, or dashboard interaction should be required.
+- Very vague complaints may be classified as `other` with `insufficient_data`.
+- Timestamp reasoning uses simple ISO timestamp and hour/minute clues.
