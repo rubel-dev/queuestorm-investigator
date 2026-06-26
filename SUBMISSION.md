@@ -28,7 +28,13 @@ docker build -t queuestorm-investigator .
 
 ## Docker Run Command
 
-Create a local `.env` file with non-secret values:
+Official Docker fallback command:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env.example queuestorm-investigator
+```
+
+Optional local `.env` values for development:
 
 ```text
 PORT=8000
@@ -46,6 +52,19 @@ docker run --rm -p 8000:8000 --env-file .env queuestorm-investigator
 
 The API listens on port `8000` inside the container and binds to `0.0.0.0`.
 
+## Endpoints
+
+```text
+GET  /health
+POST /analyze-ticket
+```
+
+`GET /health` returns exactly:
+
+```json
+{"status":"ok"}
+```
+
 ## Environment Variables
 
 `.env.example` contains variable names only:
@@ -57,6 +76,12 @@ ENVIRONMENT=
 ```
 
 No secrets are required.
+
+## Testing Command
+
+```bash
+pytest
+```
 
 ## Project Structure Summary
 
@@ -80,21 +105,13 @@ README.md                   Setup, Docker, API, reasoning, and safety docs
    docker build -t queuestorm-investigator .
    ```
 
-3. Create `.env`:
-
-   ```text
-   PORT=8000
-   LOG_LEVEL=info
-   ENVIRONMENT=production
-   ```
-
-4. Run the container:
+3. Run the container with the included placeholder environment file:
 
    ```bash
-   docker run --rm -p 8000:8000 --env-file .env queuestorm-investigator
+   docker run --rm -p 8000:8000 --env-file .env.example queuestorm-investigator
    ```
 
-5. Verify health:
+4. Verify health:
 
    ```bash
    curl http://localhost:8000/health
@@ -106,7 +123,7 @@ README.md                   Setup, Docker, API, reasoning, and safety docs
    {"status":"ok"}
    ```
 
-6. Submit requests to:
+5. Submit requests to:
 
    ```text
    POST http://localhost:8000/analyze-ticket

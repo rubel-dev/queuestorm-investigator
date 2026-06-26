@@ -17,23 +17,23 @@ The service is deterministic, offline, and rule-based. It does not call external
 
 ```text
 .
-├── app/
-│   ├── api.py
-│   ├── main.py
-│   ├── models.py
-│   └── services/
-│       └── analyzer.py
-├── tests/
-│   ├── QueueStorm_300_Hidden_Style_Cases.json
-│   ├── hidden_cases.json
-│   ├── test_api.py
-│   ├── test_hidden_judge.py
-│   └── test_judging_hardening.py
-├── Dockerfile
-├── requirements.txt
-├── .env.example
-├── .dockerignore
-└── SUBMISSION.md
+|-- app/
+|   |-- api.py
+|   |-- main.py
+|   |-- models.py
+|   `-- services/
+|       `-- analyzer.py
+|-- tests/
+|   |-- QueueStorm_300_Hidden_Style_Cases.json
+|   |-- hidden_cases.json
+|   |-- test_api.py
+|   |-- test_hidden_judge.py
+|   `-- test_judging_hardening.py
+|-- Dockerfile
+|-- requirements.txt
+|-- .env.example
+|-- .dockerignore
+`-- SUBMISSION.md
 ```
 
 ## Python Version
@@ -70,7 +70,13 @@ docker build -t queuestorm-investigator .
 
 ## Docker Run
 
-Create a local `.env` file from `.env.example` and set non-secret values if desired:
+The official Docker fallback command can use `.env.example` directly because the Dockerfile provides safe defaults for blank values:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env.example queuestorm-investigator
+```
+
+For local development, you may create a private `.env` file from `.env.example` and set non-secret values:
 
 ```text
 PORT=8000
@@ -244,6 +250,14 @@ tests/QueueStorm_300_Hidden_Style_Cases.json
 ```
 
 It validates official fields, enums, confidence range, reason codes, safety wording, prompt-injection resistance, controlled errors, and no extra response fields.
+
+## Assumptions
+
+- The judge sends each request as JSON to `POST /analyze-ticket`.
+- Transaction histories are supplied in the request and are the only evidence source available to the service.
+- The API is a support triage assistant, not a payment authority.
+- The service should not contact real payment rails, databases, third parties, or external AI providers during judging.
+- Ambiguous financial evidence is safer as `insufficient_data` than a guessed transaction match.
 
 ## Known Limitations
 
