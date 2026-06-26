@@ -19,8 +19,6 @@ dist/
 *.egg-info/
 
 # Local environment files
-.env
-.env.*
 !.env.example
 
 # Logs and local runtime files
@@ -29,6 +27,7 @@ dist/
 
 # Editor/OS noise
 .idea/
-.vscode/
 .DS_Store
 Thumbs.db
+config.bat
+node_modules
