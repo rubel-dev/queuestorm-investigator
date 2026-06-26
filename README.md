@@ -179,7 +179,7 @@ The Dockerfile uses `python:3.12-slim`, installs `requirements.txt`, exposes por
 `.env.example` contains variable names only:
 
 ```bash
-PORT=8000
+PORT=
 ```
 
 No real secrets are required. Do not commit `.env` or any API keys.
@@ -229,7 +229,8 @@ Suspicious calls, phishing, credential requests, and account-risk complaints are
 
 The API returns controlled JSON errors:
 
-- Invalid JSON or schema errors: `400`
+- Invalid JSON or missing required fields: `400`
+- Invalid enum values or invalid transaction fields: `422`
 - Empty `ticket_id` or empty `complaint`: `422`
 - Internal server error: `500`
 
